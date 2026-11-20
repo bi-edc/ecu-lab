@@ -1,0 +1,81 @@
+name: Android
+
+# Builds the sideloadable Android APK (Capacitor wrapper around the web build).
+#
+# Every push builds one and attaches it to the run as an artifact. A push to `main`
+# also replaces the `android-latest` pre-release, so the newest APK always has the same
+# download page: Releases → "Android (latest)" → app-release.apk. Download it on the
+# device and open it; Android installs it over the previous one because every build is
+# signed with the same sideload key (android/app/build.gradle).
+#
+# GitHub-made actions only, like the other workflows. Ubuntu runners already carry the
+# Android SDK, so nothing else is needed.
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: npm
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - run: npm ci
+
+      - name: Build web bundle and sync into the Android project
+        run: npm run build:android
+
+      - name: Build APK
+        working-directory: android
+        env:
+          # Feeds versionCode, so successive builds of one web version still upgrade.
+          ANDROID_BUILD_NUMBER: ${{ github.run_number }}
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Name the APK
+        id: name
+        run: |
+          version=$(node -p "require('./package.json').version")
+          file="ecu-lab-${version}-build${{ github.run_number }}.apk"
+          cp android/app/build/outputs/apk/release/app-release.apk "$file"
+          echo "file=$file" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.name.outputs.file }}
+          path: ${{ steps.name.outputs.file }}
+          if-no-files-found: error
+
+      - name: Publish as the android-latest pre-release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete android-latest --yes --cleanup-tag 2>/dev/null || true
+          gh release create android-latest "${{ steps.name.outputs.file }}" \
+            --prerelease --target "$GITHUB_SHA" \
+            --title "Android (latest)" \
+            --notes "ECU Lab ${{ steps.name.outputs.version }}, build ${{ github.run_number }} ($GITHUB_SHA). Sideload APK: download it on the tablet and open it."

@@ -1,0 +1,83 @@
+apply plugin: 'com.android.application'
+
+import groovy.json.JsonSlurper
+
+// versionName follows the web app's package.json, so the APK and the site agree on
+// what build this is. versionCode must only ever go up or Android refuses to install
+// over the top: MAJOR*1e6 + MINOR*1e4 + PATCH*100, plus the CI run number (mod 100)
+// so two APKs of the same web version still upgrade in order.
+def webVersion = new JsonSlurper().parse(file('../../package.json')).version
+def (vMaj, vMin, vPat) = webVersion.tokenize('.-')[0..2].collect { it as int }
+def buildNumber = (System.getenv('ANDROID_BUILD_NUMBER') ?: '0') as int
+def computedVersionCode = vMaj * 1000000 + vMin * 10000 + vPat * 100 + (buildNumber % 100)
+
+android {
+    namespace = "io.github.biedc.eculab"
+    compileSdk = rootProject.ext.compileSdkVersion
+    defaultConfig {
+        applicationId "io.github.biedc.eculab"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode computedVersionCode
+        versionName webVersion
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    // Sideload signing. Android only installs an update over an existing app when both
+    // are signed with the same key, and a fresh CI runner would otherwise mint a new
+    // debug key every build, forcing an uninstall that wipes the app's saves. This key
+    // is committed on purpose: the APK is sideloaded, never published to a store, so
+    // the key's only job is to stay the same. To use a private key instead, set the
+    // four ANDROID_KEYSTORE_* environment variables (e.g. from repository secrets).
+    signingConfigs {
+        sideload {
+            storeFile file(System.getenv('ANDROID_KEYSTORE_FILE') ?: 'ecu-lab-sideload.keystore')
+            storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD') ?: 'eculab-sideload'
+            keyAlias System.getenv('ANDROID_KEY_ALIAS') ?: 'eculab'
+            keyPassword System.getenv('ANDROID_KEY_PASSWORD') ?: 'eculab-sideload'
+        }
+    }
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.sideload
+        }
+        release {
+            signingConfig signingConfigs.sideload
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation project(':capacitor-android')
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    implementation project(':capacitor-cordova-android-plugins')
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

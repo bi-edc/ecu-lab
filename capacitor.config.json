@@ -1,0 +1,15 @@
+{
+  "appId": "io.github.biedc.eculab",
+  "appName": "ECU Lab",
+  "webDir": "dist",
+  "android": {
+    "backgroundColor": "#0a0d14"
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "native",
+      "initialViewportFitValueHint": "auto",
+      "style": "DARK"
+    }
+  }
+}

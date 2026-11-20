@@ -13,6 +13,7 @@ import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'rec
 import { FAULTABLE_SENSORS, LOG_CHANNELS } from '../../../sim/index.js';
 import { CorrectionStack } from '../../components/ecu/CorrectionStack.jsx';
 import { MapSlots } from '../../components/ecu/MapSlots.jsx';
+import { downloadCsv } from '../../components/dynoCsv.js';
 import { ExpandableInfo } from '../../components/ExpandableInfo.jsx';
 import { Eyebrow } from '../../primitives/Eyebrow.jsx';
 import { Panel } from '../../primitives/Panel.jsx';
@@ -62,10 +63,7 @@ export function LiveEcuPanel() {
       const c = LOG_CHANNELS.find((x) => x.id === id);
       return `${c.label} (${c.unit})`;
     }).join(','), ...src.map((r) => cols.map((id) => r[id] ?? '').join(','))].join('\n');
-    const url = URL.createObjectURL(new Blob([text], { type: 'text/csv' }));
-    const a = document.createElement('a');
-    a.href = url; a.download = 'ecu-lab-live-log.csv'; a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    downloadCsv(text, 'ecu-lab-live-log.csv');
   };
 
   return (

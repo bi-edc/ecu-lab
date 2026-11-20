@@ -12,7 +12,13 @@ interface ArtifactStorage {
   set(key: string, value: string): Promise<void>;
 }
 
+/** Injected by the Capacitor bridge, and only inside the Android app. */
+interface CapacitorGlobal {
+  isNativePlatform(): boolean;
+}
+
 interface Window {
   storage?: ArtifactStorage;
+  Capacitor?: CapacitorGlobal;
   webkitAudioContext?: typeof AudioContext;
 }

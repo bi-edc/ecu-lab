@@ -134,10 +134,36 @@ export function dynoSheetFilename({ engineName = 'engine', at = new Date() } = {
  * @param {string} filename
  */
 export function downloadCsv(text, filename) {
+  // Inside the Android app the WebView ignores `<a download>`, so the file is written
+  // to the app cache and handed to the system share sheet (Drive, My Files, email…).
+  // Checked on the global rather than by importing @capacitor/core, so the web build,
+  // the tests and the /dyno bot never load the native bridge.
+  if (globalThis.window?.Capacitor?.isNativePlatform?.()) {
+    shareNative(text, filename).catch(() => { /* a cancelled share sheet is not an error */ });
+    return;
+  }
   const url = URL.createObjectURL(new Blob([text], { type: 'text/csv;charset=utf-8' }));
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
   a.click();
   window.requestAnimationFrame(() => URL.revokeObjectURL(url));
+}
+
+/**
+ * Android app path for {@link downloadCsv}. The plugins are imported lazily so they are
+ * split into their own chunk that only the native app ever fetches.
+ *
+ * @param {string} text file contents
+ * @param {string} filename
+ */
+async function shareNative(text, filename) {
+  const [{ Filesystem, Directory, Encoding }, { Share }] = await Promise.all([
+    import('@capacitor/filesystem'),
+    import('@capacitor/share'),
+  ]);
+  const { uri } = await Filesystem.writeFile({
+    path: filename, data: text, directory: Directory.Cache, encoding: Encoding.UTF8,
+  });
+  await Share.share({ title: filename, files: [uri] });
 }
