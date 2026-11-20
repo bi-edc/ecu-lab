@@ -89,6 +89,12 @@ export function CalTable({ table, def, meta, onChange, marker, axisVars }) {
     if (e.shiftKey && sel) setSel({ ...sel, r2: r, c2: c });
     else setSel({ r1: r, c1: c, r2: r, c2: c });
     dragging.current = true;
+    // A touch pointer is implicitly captured by the element it lands on, so without
+    // this the other cells never see `pointerenter` and a finger drag selects one cell.
+    // (The cells are `touch-action: none`, so the drag is ours, not a scroll.)
+    if (e.pointerType !== 'mouse' && e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    }
   };
   const onCellEnter = (r, c) => { if (dragging.current && sel) setSel({ ...sel, r2: r, c2: c }); };
   React.useEffect(() => {
